@@ -1,6 +1,5 @@
 streamlit>=1.28.0
 music21>=9.1.0
-midi2audio>=0.4.0
 pydub>=0.25.1
 Pillow>=10.0.0
 pdf2image>=1.16.3
