@@ -1,0 +1,5 @@
+poppler-utils
+fluidsynth
+fluid-soundfont-gm
+ffmpeg
+lilypond
