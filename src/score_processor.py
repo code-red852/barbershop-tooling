@@ -146,9 +146,27 @@ def _find_lilypond() -> str | None:
     return None
 
 
-def score_to_pdf(score: stream.Score, output_path: str | None = None) -> tuple[Path | None, str]:
-    """Export score to PDF. Returns (path, error_detail)."""
+def _find_binary(name: str) -> str | None:
+    """Find a binary by name, checking PATH and common locations."""
     import shutil
+
+    found = shutil.which(name)
+    if found:
+        return found
+
+    for prefix in ["/usr/bin", "/usr/local/bin", "/snap/bin"]:
+        path = f"{prefix}/{name}"
+        if Path(path).is_file():
+            return path
+    return None
+
+
+def score_to_pdf(score: stream.Score, output_path: str | None = None) -> tuple[Path | None, str]:
+    """Export score to PDF. Returns (path, error_detail).
+
+    Bypasses music21's broken LilyPond converter by exporting MusicXML
+    and using LilyPond's own musicxml2ly tool for conversion.
+    """
     import subprocess
 
     if output_path is None:
@@ -157,49 +175,38 @@ def score_to_pdf(score: stream.Score, output_path: str | None = None) -> tuple[P
     errors = []
 
     lilypond_path = _find_lilypond()
-    if lilypond_path:
-        # Try music21's lily.pdf integration
-        try:
-            from music21 import environment
-            us = environment.UserSettings()
-            us["lilypondPath"] = lilypond_path
-            fp = score.write("lily.pdf", fp=str(output_path))
-            if Path(fp).exists():
-                return Path(fp), ""
-        except Exception as e:
-            errors.append(f"music21 lily.pdf: {e}")
+    musicxml2ly_path = _find_binary("musicxml2ly")
 
-        # Manual fallback: generate .ly then call lilypond directly
+    if lilypond_path and musicxml2ly_path:
         try:
-            ly_path = Path(tempfile.mktemp(suffix=".ly", prefix="barbershop_"))
-            score.write("lilypond", fp=str(ly_path))
-            pdf_stem = str(output_path.with_suffix(""))
+            mxml_path = Path(tempfile.mktemp(suffix=".musicxml", prefix="barbershop_"))
+            score.write("musicxml", fp=str(mxml_path))
+
+            ly_path = mxml_path.with_suffix(".ly")
             result = subprocess.run(
-                [lilypond_path, "--pdf", "-o", pdf_stem, str(ly_path)],
+                [musicxml2ly_path, "-o", str(ly_path), str(mxml_path)],
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
-            if output_path.exists():
-                return output_path, ""
-            errors.append(f"lilypond subprocess: {result.stderr[:500]}")
+            if result.returncode != 0:
+                errors.append(f"musicxml2ly: {result.stderr[:500]}")
+            elif ly_path.exists():
+                pdf_stem = str(output_path.with_suffix(""))
+                result = subprocess.run(
+                    [lilypond_path, "--pdf", "-o", pdf_stem, str(ly_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if output_path.exists():
+                    return output_path, ""
+                errors.append(f"lilypond render: {result.stderr[:500]}")
         except Exception as e:
-            errors.append(f"lilypond manual: {e}")
+            errors.append(f"musicxml2ly pipeline: {e}")
+    elif lilypond_path and not musicxml2ly_path:
+        errors.append("musicxml2ly not found (usually ships with lilypond)")
     else:
         errors.append("LilyPond not found")
-
-    # Fallback: try musescore if available
-    for cmd in ["musescore", "musescore3", "musescore4", "mscore"]:
-        ms_path = shutil.which(cmd)
-        if ms_path:
-            try:
-                from music21 import environment
-                us = environment.UserSettings()
-                us["musicxmlPath"] = ms_path
-                fp = score.write("musicxml.pdf", fp=str(output_path))
-                if Path(fp).exists():
-                    return Path(fp), ""
-            except Exception as e:
-                errors.append(f"musescore: {e}")
 
     return None, "; ".join(errors)
