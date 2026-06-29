@@ -247,7 +247,8 @@ def _generate_tracks_ui(score):
         if st.button("Export as PDF", use_container_width=True):
             with st.spinner("Rendering PDF (this may take a moment)..."):
                 try:
-                    pdf_path, error_detail = score_to_pdf(score)
+                    result = score_to_pdf(score)
+                    pdf_path, error_detail = result
                 except Exception as e:
                     pdf_path, error_detail = None, str(e)
             if pdf_path:
