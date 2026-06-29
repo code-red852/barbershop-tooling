@@ -15,7 +15,6 @@ from src.score_processor import (
     score_to_midi,
     generate_learning_tracks,
     score_to_pdf,
-    _find_lilypond,
     BARBERSHOP_PARTS,
 )
 from src.audio_generator import midi_to_audio
@@ -248,10 +247,9 @@ def _generate_tracks_ui(score):
         if st.button("Export as PDF", use_container_width=True):
             with st.spinner("Rendering PDF (this may take a moment)..."):
                 try:
-                    pdf_path = score_to_pdf(score)
+                    pdf_path, error_detail = score_to_pdf(score)
                 except Exception as e:
-                    pdf_path = None
-                    st.error(f"PDF export failed: {e}")
+                    pdf_path, error_detail = None, str(e)
             if pdf_path:
                 st.download_button(
                     "Download PDF",
@@ -260,18 +258,8 @@ def _generate_tracks_ui(score):
                     mime="application/pdf",
                     key="dl_pdf",
                 )
-            elif pdf_path is None:
-                lp = _find_lilypond()
-                if lp:
-                    st.warning(
-                        f"LilyPond found at `{lp}` but PDF generation failed. "
-                        "The score may contain notation that LilyPond cannot render."
-                    )
-                else:
-                    st.warning(
-                        "PDF export requires LilyPond or MuseScore. "
-                        "Install LilyPond from https://lilypond.org"
-                    )
+            else:
+                st.error(f"PDF export failed: {error_detail}")
     with col2:
         if st.button("Export as MusicXML", use_container_width=True):
             with st.spinner("Exporting MusicXML..."):
