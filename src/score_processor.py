@@ -128,33 +128,68 @@ def generate_learning_tracks(
     return tracks
 
 
+def _find_lilypond() -> str | None:
+    """Find lilypond binary, checking PATH and common install locations."""
+    import shutil
+
+    found = shutil.which("lilypond")
+    if found:
+        return found
+
+    for path in [
+        "/usr/bin/lilypond",
+        "/usr/local/bin/lilypond",
+        "/snap/bin/lilypond",
+    ]:
+        if Path(path).is_file():
+            return path
+    return None
+
+
 def score_to_pdf(score: stream.Score, output_path: str | None = None) -> Path | None:
     """Export score to PDF via music21's lilypond integration or musescore."""
     import shutil
+    import subprocess
 
     if output_path is None:
         output_path = Path(tempfile.mktemp(suffix=".pdf", prefix="barbershop_"))
     output_path = Path(output_path)
 
-    # Try music21's built-in lilypond PDF export (handles .ly generation + lilypond call)
-    if shutil.which("lilypond"):
+    lilypond_path = _find_lilypond()
+    if lilypond_path:
         try:
             from music21 import environment
             us = environment.UserSettings()
-            us["lilypondPath"] = shutil.which("lilypond")
+            us["lilypondPath"] = lilypond_path
             fp = score.write("lily.pdf", fp=str(output_path))
             if Path(fp).exists():
                 return Path(fp)
         except Exception:
             pass
 
+        # Manual fallback: generate .ly then call lilypond directly
+        try:
+            ly_path = Path(tempfile.mktemp(suffix=".ly", prefix="barbershop_"))
+            score.write("lilypond", fp=str(ly_path))
+            pdf_stem = str(output_path.with_suffix(""))
+            subprocess.run(
+                [lilypond_path, "--pdf", "-o", pdf_stem, str(ly_path)],
+                capture_output=True,
+                timeout=120,
+            )
+            if output_path.exists():
+                return output_path
+        except Exception:
+            pass
+
     # Fallback: try musescore if available
     for cmd in ["musescore", "musescore3", "musescore4", "mscore"]:
-        if shutil.which(cmd):
+        ms_path = shutil.which(cmd)
+        if ms_path:
             try:
                 from music21 import environment
                 us = environment.UserSettings()
-                us["musicxmlPath"] = shutil.which(cmd)
+                us["musicxmlPath"] = ms_path
                 fp = score.write("musicxml.pdf", fp=str(output_path))
                 if Path(fp).exists():
                     return Path(fp)
