@@ -245,8 +245,12 @@ def _generate_tracks_ui(score):
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Export as PDF", use_container_width=True):
-            with st.spinner("Rendering PDF..."):
-                pdf_path = score_to_pdf(score)
+            with st.spinner("Rendering PDF (this may take a moment)..."):
+                try:
+                    pdf_path = score_to_pdf(score)
+                except Exception as e:
+                    pdf_path = None
+                    st.error(f"PDF export failed: {e}")
             if pdf_path:
                 st.download_button(
                     "Download PDF",
@@ -255,10 +259,10 @@ def _generate_tracks_ui(score):
                     mime="application/pdf",
                     key="dl_pdf",
                 )
-            else:
+            elif pdf_path is None:
                 st.warning(
-                    "PDF export requires LilyPond. "
-                    "Install it from https://lilypond.org"
+                    "PDF export requires LilyPond or MuseScore. "
+                    "Install LilyPond from https://lilypond.org"
                 )
     with col2:
         if st.button("Export as MusicXML", use_container_width=True):
