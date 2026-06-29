@@ -128,38 +128,37 @@ def generate_learning_tracks(
     return tracks
 
 
-def score_to_lilypond(score: stream.Score, output_path: str | None = None) -> Path:
-    """Export score to LilyPond format for PDF rendering."""
-    if output_path is None:
-        output_path = tempfile.mktemp(suffix=".ly", prefix="barbershop_")
-    output_path = Path(output_path)
-
-    fp = score.write("lilypond", fp=str(output_path))
-    return Path(fp)
-
-
 def score_to_pdf(score: stream.Score, output_path: str | None = None) -> Path | None:
-    """Export score to PDF via LilyPond."""
-    import subprocess
+    """Export score to PDF via music21's lilypond integration or musescore."""
     import shutil
 
-    if not shutil.which("lilypond"):
-        return None
-
-    try:
-        ly_path = score_to_lilypond(score, output_path=None)
-    except Exception:
-        return None
-
     if output_path is None:
-        output_path = ly_path.with_suffix(".pdf")
+        output_path = Path(tempfile.mktemp(suffix=".pdf", prefix="barbershop_"))
+    output_path = Path(output_path)
 
-    subprocess.run(
-        ["lilypond", "-o", str(Path(output_path).with_suffix("")), str(ly_path)],
-        capture_output=True,
-        timeout=120,
-    )
+    # Try music21's built-in lilypond PDF export (handles .ly generation + lilypond call)
+    if shutil.which("lilypond"):
+        try:
+            from music21 import environment
+            us = environment.UserSettings()
+            us["lilypondPath"] = shutil.which("lilypond")
+            fp = score.write("lily.pdf", fp=str(output_path))
+            if Path(fp).exists():
+                return Path(fp)
+        except Exception:
+            pass
 
-    if Path(output_path).exists():
-        return Path(output_path)
+    # Fallback: try musescore if available
+    for cmd in ["musescore", "musescore3", "musescore4", "mscore"]:
+        if shutil.which(cmd):
+            try:
+                from music21 import environment
+                us = environment.UserSettings()
+                us["musicxmlPath"] = shutil.which(cmd)
+                fp = score.write("musicxml.pdf", fp=str(output_path))
+                if Path(fp).exists():
+                    return Path(fp)
+            except Exception:
+                pass
+
     return None
