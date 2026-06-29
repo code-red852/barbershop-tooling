@@ -134,9 +134,8 @@ def score_to_lilypond(score: stream.Score, output_path: str | None = None) -> Pa
         output_path = tempfile.mktemp(suffix=".ly", prefix="barbershop_")
     output_path = Path(output_path)
 
-    lpc = converter.subConverters.ConverterLilypond()
-    lpc.write(score, fmt="lilypond", fp=str(output_path))
-    return output_path
+    fp = score.write("lilypond", fp=str(output_path))
+    return Path(fp)
 
 
 def score_to_pdf(score: stream.Score, output_path: str | None = None) -> Path | None:
@@ -147,7 +146,11 @@ def score_to_pdf(score: stream.Score, output_path: str | None = None) -> Path | 
     if not shutil.which("lilypond"):
         return None
 
-    ly_path = score_to_lilypond(score, output_path=None)
+    try:
+        ly_path = score_to_lilypond(score, output_path=None)
+    except Exception:
+        return None
+
     if output_path is None:
         output_path = ly_path.with_suffix(".pdf")
 
