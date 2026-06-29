@@ -146,41 +146,47 @@ def _find_lilypond() -> str | None:
     return None
 
 
-def score_to_pdf(score: stream.Score, output_path: str | None = None) -> Path | None:
-    """Export score to PDF via music21's lilypond integration or musescore."""
+def score_to_pdf(score: stream.Score, output_path: str | None = None) -> tuple[Path | None, str]:
+    """Export score to PDF. Returns (path, error_detail)."""
     import shutil
     import subprocess
 
     if output_path is None:
         output_path = Path(tempfile.mktemp(suffix=".pdf", prefix="barbershop_"))
     output_path = Path(output_path)
+    errors = []
 
     lilypond_path = _find_lilypond()
     if lilypond_path:
+        # Try music21's lily.pdf integration
         try:
             from music21 import environment
             us = environment.UserSettings()
             us["lilypondPath"] = lilypond_path
             fp = score.write("lily.pdf", fp=str(output_path))
             if Path(fp).exists():
-                return Path(fp)
-        except Exception:
-            pass
+                return Path(fp), ""
+        except Exception as e:
+            errors.append(f"music21 lily.pdf: {e}")
 
         # Manual fallback: generate .ly then call lilypond directly
         try:
             ly_path = Path(tempfile.mktemp(suffix=".ly", prefix="barbershop_"))
             score.write("lilypond", fp=str(ly_path))
             pdf_stem = str(output_path.with_suffix(""))
-            subprocess.run(
+            result = subprocess.run(
                 [lilypond_path, "--pdf", "-o", pdf_stem, str(ly_path)],
                 capture_output=True,
+                text=True,
                 timeout=120,
             )
             if output_path.exists():
-                return output_path
-        except Exception:
-            pass
+                return output_path, ""
+            errors.append(f"lilypond subprocess: {result.stderr[:500]}")
+        except Exception as e:
+            errors.append(f"lilypond manual: {e}")
+    else:
+        errors.append("LilyPond not found")
 
     # Fallback: try musescore if available
     for cmd in ["musescore", "musescore3", "musescore4", "mscore"]:
@@ -192,8 +198,8 @@ def score_to_pdf(score: stream.Score, output_path: str | None = None) -> Path | 
                 us["musicxmlPath"] = ms_path
                 fp = score.write("musicxml.pdf", fp=str(output_path))
                 if Path(fp).exists():
-                    return Path(fp)
-            except Exception:
-                pass
+                    return Path(fp), ""
+            except Exception as e:
+                errors.append(f"musescore: {e}")
 
-    return None
+    return None, "; ".join(errors)
